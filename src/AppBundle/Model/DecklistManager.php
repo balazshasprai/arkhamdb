@@ -394,6 +394,24 @@ class DecklistManager
 				//$sub->andWhere($sub->expr()->notIn('c.pack', $packs));
 
 				$qb->andWhere($qb->expr()->not($qb->expr()->exists($sub->getDQL())));
+
+				// the investigator is not in the deck slots, so check it separately: the collection
+				// must contain the investigator card or a reprint of it (duplicate_of). Parallel /
+				// alternate versions (alternate_of) are separate cards and need their own pack.
+				$qb->innerJoin('d.character', 'own_inv');
+				$inv = $this->doctrine->createQueryBuilder();
+				$inv->select('ic');
+				$inv->from('AppBundle:Card', 'ic');
+				$inv->where('ic.pack IN (:own_packs)');
+				$inv->andWhere($inv->expr()->orX(
+					'ic.id = own_inv.id',
+					'IDENTITY(ic.duplicate_of) = own_inv.id',
+					'ic.id = IDENTITY(own_inv.duplicate_of)',
+					'IDENTITY(ic.duplicate_of) = IDENTITY(own_inv.duplicate_of)'
+				));
+				$qb->andWhere($qb->expr()->exists($inv->getDQL()));
+				// pack ids; "1-2" (second core set) counts as owning the core set (1)
+				$qb->setParameter('own_packs', array_values(array_unique(array_map('intval', $packs))));
 			}
 		}
 
